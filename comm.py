@@ -5,7 +5,6 @@ from enum import Enum
 import serial
 import serial.tools
 import serial.tools.list_ports_common
-from _typeshed import ReadableBuffer
 from nanoid import generate
 from pydantic import BaseModel, Field, Json
 from serial.tools.list_ports import comports
@@ -25,7 +24,7 @@ class CommandCode(Enum):
 class Command(BaseModel):
     code: CommandCode
     id: str = Field(default_factory=generate)
-    data: Json | None = None
+    data: typing.Dict[str, typing.Any] | None = None
 
     def bytes(self) -> bytes:
         return self.model_dump_json().encode()
@@ -34,7 +33,15 @@ class Command(BaseModel):
 class Response(BaseModel):
     serial_number: str
     command_id: str
-    data: Json | None = None
+    data: typing.Dict[str, typing.Any] | None = None
+
+
+class PicoInfo(BaseModel):
+    serial_number: str
+    name: str
+    used_memory: int
+    free_memory: int
+    total_memory: int
 
 
 class NullTerminatedSerial(serial.Serial):
@@ -52,18 +59,34 @@ class NullTerminatedSerial(serial.Serial):
         """
         Read until null, the size is exceeded or until timeout occurs.
         """
-        return self.read_until("\0".encode(), size)
+        resp = self.read_until("\0".encode(), size)
+
+        return resp[:-1]
 
 
 class Controller:
-    picos: dict[str, NullTerminatedSerial]
+    serials: dict[str, NullTerminatedSerial]
     """serial number to port device"""
+    infos: dict[str, PicoInfo]
+    """serial number to PicoInfo"""
 
     def __init__(self):
-        pass
+        self.serials = {}
+        self.infos = {}
 
-    def send_command(self, serial_number: str, cmd: Command) -> Response:
-        ser = self.picos[serial_number]
+    def send_command(
+        self,
+        cmd: Command,
+        serial_number: str | None = None,
+        ser: NullTerminatedSerial | None = None,
+    ) -> Response:
+        if not ser:
+            if not serial_number:
+                raise ValueError(
+                    "must specify either serial_number or NullTerminatedSerial instance"
+                )
+
+            ser = self.serials[serial_number]
 
         ser.write(cmd.bytes())
 
@@ -73,30 +96,41 @@ class Controller:
 
         return resp
 
-    def discover_picos(
-        self,
-    ):
-        ports = comports()
-        picos = [
-            x for x in [self.scan_port_for_pico(port.device) for port in ports] if x
-        ]
+    def refresh_picos(self):
+        used_ports = [ser.name for ser in self.serials.values()]
 
-        picos = {pico[0]: pico[1] for pico in picos}
+        new_ports = [port for port in comports() if port.device not in used_ports]
 
-        return self.picos
+        new_sers = [NullTerminatedSerial(port.device) for port in new_ports]
+        all_sers = new_sers + list(self.serials.values())
 
-    def scan_port_for_pico(self, port: str) -> tuple[str, NullTerminatedSerial] | None:
-        """
-        Returns a NullTerminatedSerial session if port has a Pico connected, else None.
-        """
-        ser = NullTerminatedSerial(port=port, baudrate=115200, timeout=2)
+        def scan_port_for_pico(
+            ser: NullTerminatedSerial,
+        ) -> tuple[str, NullTerminatedSerial, PicoInfo] | None:
+            """
+            Returns a NullTerminatedSerial session if port has a Pico connected, else None.
+            """
 
-        cmd = Command(code=CommandCode.ConfirmIdentity)
+            try:
+                resp = None
+                resp = self.send_command(
+                    cmd=Command(code=CommandCode.ConfirmIdentity), ser=ser
+                )
+            except Exception as e:
+                print(e)
+            finally:
+                if not resp:
+                    ser.close()
 
-        ser.write(cmd.bytes())
+            return (
+                (resp.serial_number, ser, PicoInfo.model_validate(resp.data))
+                if resp
+                else None
+            )
 
-        output = ser.read_until_null().decode()
+        picos = [pico for pico in [scan_port_for_pico(ser) for ser in all_sers] if pico]
 
-        resp = Response.model_validate_json(output)
+        self.serials = {pico[0]: pico[1] for pico in picos}
+        self.infos = {pico[0]: pico[2] for pico in picos}
 
-        return (resp.serial_number, ser) if resp.command_id == cmd.id else None
+        return self.serials
