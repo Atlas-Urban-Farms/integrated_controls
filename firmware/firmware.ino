@@ -2,13 +2,12 @@
 #include <WiFi.h>
 #include <string.h>
 
-void playStartup(void);
 void respondToMessage(const char *id, JsonDocument data, JsonDocument (*handler)(JsonDocument data));
 JsonDocument respondUnimplemented(JsonObjectConst data);
 JsonDocument respondConfirmIdentity(JsonDocument data);
 JsonDocument respondStartWater(JsonObjectConst data);
 JsonDocument respondStartLight(JsonObjectConst data);
-
+JsonDocument respondPlaySound(JsonObjectConst data);
 
 // command codes
 #define ConfirmIdentity "CC1"
@@ -16,6 +15,7 @@ JsonDocument respondStartLight(JsonObjectConst data);
 #define EndWater "CC3"
 #define StartLight "CC4"
 #define EndLight "CC5"
+#define PlaySound "CC6"
 
 // pins
 #define BUZZER_PIN 15
@@ -30,20 +30,9 @@ char mac[6];
 
 constexpr unsigned int hash(const char *s, int off = 0) {
   return !s[off] ? 5381 : (hash(s, off+1)*33) ^ s[off];                           
-} 
-
-void play_startup(void)
-{
-  #ifdef BUZZER_PIN 
-  tone(BUZZER_PIN, 440, 250);
-  delay(125);
-  tone(BUZZER_PIN, 440, 250);
-  delay(125);
-  tone(BUZZER_PIN, 880, 500);
-  #endif
 }
 
-void pin_setup(void)
+void pinSetup(void)
 {
   /* this just sets up the pinmodes and outputs 
   for all the pins that need it */
@@ -75,7 +64,7 @@ void setup()
   Serial.begin(9600);
   Serial.flush();
 
-  pin_setup();
+  pinSetup();
 
   byte temp[6];
   WiFi.macAddress(temp);
@@ -104,10 +93,16 @@ void loop()
     {
     case hash(ConfirmIdentity):
       respondToMessage(id, data, respondConfirmIdentity);
+      break;
     case hash(StartWater):
       respondToMessage(id, data, respondStartWater);
+      break;
     case hash(StartLight):
       respondToMessage(id, data, respondStartLight);
+      break;
+    case hash(PlaySound):
+      respondToMessage(id, data, respondPlaySound);
+      break;
     default:
       respondToMessage(id, data, respondUnimplemented);
     }
@@ -117,17 +112,6 @@ void loop()
 
   digitalWrite(PUMP_PIN, now > waterStart + waterDuration);
   digitalWrite(LED_PIN, now > lightStart + lightDuration);
-}
-
-void playStartup(void)
-{
-  #ifdef BUZZER_PIN 
-  tone(BUZZER_PIN, 440, 250);
-  delay(125);
-  tone(BUZZER_PIN, 440, 250);
-  delay(125);
-  tone(BUZZER_PIN, 880, 500);
-  #endif
 }
 
 void respondToMessage(const char *id, JsonObjectConst data, JsonDocument (*handler)(JsonObjectConst data))
@@ -150,6 +134,21 @@ void respondToMessage(const char *id, JsonObjectConst data, JsonDocument (*handl
   Serial.write((byte) 0x00);
 }
 
+JsonDocument respondPlaySound(JsonObjectConst data)
+{
+  JsonDocument doc;
+
+  #ifdef BUZZER_PIN 
+  tone(BUZZER_PIN, 440, 250);
+  delay(125);
+  tone(BUZZER_PIN, 440, 250);
+  delay(125);
+  tone(BUZZER_PIN, 880, 500);
+  #endif
+
+  return doc;
+}
+
 JsonDocument respondUnimplemented(JsonObjectConst data)
 {
   JsonDocument doc;
@@ -166,8 +165,6 @@ JsonDocument respondConfirmIdentity(JsonObjectConst data)
   doc["used_memory"] = rp2040.getUsedHeap();
   doc["free_memory"] = rp2040.getFreeHeap();
   doc["total_memory"] = rp2040.getTotalHeap();
-
-  playStartup();
 
   return doc;
 }
