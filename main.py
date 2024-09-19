@@ -7,7 +7,14 @@ import interface as intf
 
 
 def main():
-    controller = ctrl.Controller()
+    from multiprocessing.managers import SyncManager
+
+    manager = SyncManager()
+    manager.register("Controller", ctrl.Controller)
+
+    manager.start()
+
+    controller: ctrl.Controller = manager.Controller() # type: ignore
     interface = intf.Interface(controller)
 
     p1 = threading.Thread(target=interface.start)

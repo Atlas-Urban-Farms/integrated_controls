@@ -1,4 +1,5 @@
 import functools
+import json
 import multiprocessing
 import threading
 import time
@@ -13,12 +14,11 @@ from controller.comm import (
     PicoInfo,
     Response,
 )
-from controller.models import Pico
-
-lock = threading.Lock()
+from controller.models import GrowthProfile, Pico
 
 
 class Controller:
+
     def __init__(self):
         import sqlite3
 
@@ -28,10 +28,12 @@ class Controller:
         self.started: bool = False
         self.serials: dict[str, NullTerminatedSerial] = {}
 
+        self.lock = multiprocessing.Lock()
+
         self.exceptions: list[Exception] = []
 
         self.cursor = self.conn.cursor()
-        with lock:
+        with self.lock:
             self.cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS units (
@@ -55,27 +57,28 @@ class Controller:
                 """
             )
 
-    def send_command(
+    def _send_command(
         self,
         cmd: Command,
         serial_number: str | None = None,
         ser: NullTerminatedSerial | None = None,
     ) -> Response:
-        if not ser:
-            if not serial_number:
-                raise ValueError(
-                    "must specify either serial_number or NullTerminatedSerial instance"
-                )
+        with self.lock:
+            if not ser:
+                if not serial_number:
+                    raise ValueError(
+                        "must specify either serial_number or NullTerminatedSerial instance"
+                    )
 
-            ser = self.serials[serial_number]
+                ser = self.serials[serial_number]
 
-        ser.write(cmd.bytes())
+            ser.write(cmd.bytes())
 
-        output = ser.read_until_null().decode()
+            output = ser.read_until_null().decode()
 
-        resp = Response.model_validate_json(output)
+            resp = Response.model_validate_json(output)
 
-        return resp
+            return resp
 
     def refresh_picos(self):
         def attempt_open(device: str):
@@ -109,7 +112,7 @@ class Controller:
             resp = None
 
             try:
-                resp = self.send_command(
+                resp = self._send_command(
                     cmd=Command(code=CommandCode.ConfirmIdentity), ser=ser
                 )
             except Exception as e:
@@ -131,17 +134,22 @@ class Controller:
         new_picos = [pico for pico in picos if pico[0] not in self.serials.keys()]
 
         for pico in new_picos:
-            self.send_command(Command(code=CommandCode.PlaySound), ser=pico[1])
+            self._send_command(Command(code=CommandCode.PlaySound), ser=pico[1])
 
         self.serials = {pico[0]: pico[1] for pico in picos}
 
         for pico in picos:
             with self.conn:
-                with lock:
+                with self.lock:
                     self.cursor.execute(
                         f"""
                         INSERT OR IGNORE INTO units (serial_number, growth_profile)
-                        VALUES ('{pico[0]}', '{{}}');
+                        VALUES ('{pico[0]}', '{json.dumps({
+                            "watering_interval": 43200,
+                            "watering_time": 30,
+                            "light_duration": 28800,
+
+                        })}');
                         """
                     )
 
@@ -150,7 +158,7 @@ class Controller:
     def connected_picos(self) -> list[Pico]:
         serial_numbers = list(self.serials.keys())
 
-        with lock:
+        with self.lock:
             results = self.cursor.execute(
                 f"""
                 SELECT * FROM units
@@ -162,7 +170,7 @@ class Controller:
         return [Pico(**row) for row in results]
 
     def all_picos(self) -> list[Pico]:
-        with lock:
+        with self.lock:
             results = self.cursor.execute(
                 f"""
                 SELECT * FROM units;
@@ -173,7 +181,7 @@ class Controller:
 
     def change_pico_name(self, serial_number: str, name: str):
         with self.conn:
-            with lock:
+            with self.lock:
                 self.cursor.execute(
                     """
                     UPDATE units
@@ -183,16 +191,34 @@ class Controller:
                     (name, serial_number),
                 )
 
+    def change_pico_growth_profile(self, serial_number: str, profile: GrowthProfile):
+        with self.conn:
+            with self.lock:
+                self.cursor.execute(
+                    """
+                    UPDATE units
+                    SET growth_profile = ?
+                    WHERE serial_number = ?;
+                    """,
+                    (profile.model_dump_json(), serial_number),
+                )
+
     def start_water(self, serial_number: str, duration: int):
-        self.send_command(
+        self._send_command(
             serial_number=serial_number,
             cmd=Command(code=CommandCode.StartWater, data={"duration": duration}),
         )
 
     def start_light(self, serial_number: str, duration: int):
-        self.send_command(
+        self._send_command(
             serial_number=serial_number,
             cmd=Command(code=CommandCode.StartLight, data={"duration": duration}),
+        )
+
+    def play_sound(self, serial_number: str):
+        self._send_command(
+            serial_number=serial_number,
+            cmd=Command(code=CommandCode.PlaySound),
         )
 
     epoch = 0
