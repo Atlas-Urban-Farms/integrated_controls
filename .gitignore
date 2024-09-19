@@ -1,6 +1,7 @@
-venv
+*venv
 __pycache__
 .vscode
 *.db
 *.db-journal
 build
+*.out

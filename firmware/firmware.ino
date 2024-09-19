@@ -110,8 +110,8 @@ void loop()
 
   unsigned long now = millis();
 
-  digitalWrite(PUMP_PIN, now > waterStart + waterDuration);
-  digitalWrite(LED_PIN, now > lightStart + lightDuration);
+  digitalWrite(PUMP_PIN, now < waterStart + waterDuration);
+  digitalWrite(LED_PIN, now < lightStart + lightDuration);
 }
 
 void respondToMessage(const char *id, JsonObjectConst data, JsonDocument (*handler)(JsonObjectConst data))

@@ -1,26 +1,28 @@
-import controller
-import interface
+import atexit
+import threading
+import time
 
-
-def controller_start():
-    from contextlib import redirect_stdout
-
-    with open("logs.txt", "w+") as f:
-        with redirect_stdout(f):
-            controller.start()
+import controller as ctrl
+import interface as intf
 
 
 def main():
-    import multiprocessing
+    controller = ctrl.Controller()
+    interface = intf.Interface(controller)
 
-    p1 = multiprocessing.Process(target=interface.start)
-    p2 = multiprocessing.Process(target=controller_start)
+    p1 = threading.Thread(target=interface.start)
 
     p1.start()
-    p2.start()
 
-    p1.join()
-    p2.join()
+    epoch = time.time()
+
+    while True:
+        controller.loop()
+        interface.loop()
+
+        end = time.time()
+
+        time.sleep(max((epoch + 1000 - end) / 1000, 0))
 
 
 if __name__ == "__main__":
