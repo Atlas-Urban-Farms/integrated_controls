@@ -1,3 +1,4 @@
+import datetime
 import functools
 import json
 import multiprocessing
@@ -98,7 +99,6 @@ class Controller:
             ]
             if x
         ]
-        
 
         all_ports = used_ports + new_ports
 
@@ -147,8 +147,8 @@ class Controller:
                         VALUES ('{pico[0]}', '{json.dumps({
                             "watering_interval": 43200,
                             "watering_time": 30,
-                            "light_duration": 28800,
-
+                            "light_start": "08:00",
+                            "light_end": "16:00",
                         })}');
                         """
                     )
@@ -204,12 +204,14 @@ class Controller:
                 )
 
     def start_water(self, serial_number: str, duration: int):
+        """start water for the specified number of milliseconds"""
         self._send_command(
             serial_number=serial_number,
             cmd=Command(code=CommandCode.StartWater, data={"duration": duration}),
         )
 
     def start_light(self, serial_number: str, duration: int):
+        """start light for the specified number of milliseconds"""
         self._send_command(
             serial_number=serial_number,
             cmd=Command(code=CommandCode.StartLight, data={"duration": duration}),
@@ -221,7 +223,47 @@ class Controller:
             cmd=Command(code=CommandCode.PlaySound),
         )
 
+    def get_unit(self, serial_number: str) -> GrowthProfile:
+        results = self.cursor.execute(
+            """
+            SELECT * FROM units WHERE serial_number = ?;
+            """,
+            (serial_number,),
+        ).fetchall()
+
+        return GrowthProfile.model_validate_json(results[0]["growth_profile"])
+
+    def get_last_watered(self, serial_number: str) -> float | None:
+        results = self.cursor.execute(
+            """
+            SELECT timestamp FROM events WHERE serial_number = ? and command_code = ? ORDER BY timestamp DESC LIMIT 1;
+            """,
+            (serial_number, CommandCode.StartWater.value),
+        ).fetchall()
+
+        if len(results) > 0:
+            return results[0]["timestamp"]
+
+        return None
+
     epoch = 0
 
     def loop(self):
         self.refresh_picos()
+
+        for serial_number, ser in self.serials.items():
+            growth_profile = self.get_unit(serial_number)
+
+            now = time.time()
+            timestamp = datetime.datetime.now().time()
+
+            if growth_profile.light_end >= timestamp >= growth_profile.light_start:
+                self.start_light(serial_number, 10000)
+
+            last_watered = self.get_last_watered(serial_number)
+
+            if (
+                not last_watered
+                or last_watered + growth_profile.watering_interval > now
+            ):
+                self.start_water(serial_number, growth_profile.watering_time * 1000)

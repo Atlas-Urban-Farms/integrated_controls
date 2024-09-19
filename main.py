@@ -14,7 +14,7 @@ def main():
 
     manager.start()
 
-    controller: ctrl.Controller = manager.Controller() # type: ignore
+    controller: ctrl.Controller = ctrl.Controller()  # type: ignore
     interface = intf.Interface(controller)
 
     p1 = threading.Thread(target=interface.start)

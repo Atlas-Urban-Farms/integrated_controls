@@ -48,7 +48,7 @@ class Interface:
             old_profile = ctrl.GrowthProfile.model_validate_json(pico.growth_profile)
 
             new_profile = ctrl.GrowthProfile(
-                **{input.prompt[:-2]: int(input.value) for input in inputs}
+                **{input.prompt[:-2]: input.value for input in inputs}  # type: ignore
             )
 
             if old_profile != new_profile:
@@ -121,7 +121,6 @@ class Interface:
                 ptg.Splitter("Unit Name", "Serial Number", "", ""),
             ] + [self.new_pico_display(pico) for pico in picos]
 
-            
             # widgets = [ptg.Container(widget, border=["bottom"]) for widget in widgets]
 
             self.units_container.set_widgets(widgets)  # type: ignore

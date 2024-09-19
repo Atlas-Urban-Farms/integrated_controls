@@ -1,3 +1,6 @@
+import datetime
+import time
+
 from pydantic import BaseModel
 
 
@@ -6,7 +9,9 @@ class Pico(BaseModel):
     name: str | None
     growth_profile: str
 
+
 class GrowthProfile(BaseModel):
-    light_duration: int
+    light_start: datetime.time
+    light_end: datetime.time
     watering_interval: int
     watering_time: int
