@@ -35,28 +35,29 @@ class Controller:
 
         self.cursor = self.conn.cursor()
         with self.lock:
-            self.cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS units (
-                    name TEXT UNIQUE, 
-                    serial_number TEXT NOT NULL, 
-                    growth_profile TEXT NOT NULL,
-                    PRIMARY KEY (serial_number)
-                ) 
-                """
-            )
+            with self.conn:
+                self.cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS units (
+                        name TEXT UNIQUE, 
+                        serial_number TEXT NOT NULL, 
+                        growth_profile TEXT NOT NULL,
+                        PRIMARY KEY (serial_number)
+                    ) 
+                    """
+                )
 
-            self.cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                    serial_number TEXT NOT NULL, 
-                    command_code TEXT NOT NULL,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(serial_number) REFERENCES units(serial_number)
-                ) 
-                """
-            )
+                self.cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        serial_number TEXT NOT NULL, 
+                        command_code TEXT NOT NULL,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(serial_number) REFERENCES units(serial_number)
+                    ) 
+                    """
+                )
 
     def _send_command(
         self,
@@ -139,8 +140,8 @@ class Controller:
         self.serials = {pico[0]: pico[1] for pico in picos}
 
         for pico in picos:
-            with self.conn:
-                with self.lock:
+            with self.lock:
+                with self.conn:
                     self.cursor.execute(
                         f"""
                         INSERT OR IGNORE INTO units (serial_number, growth_profile)
@@ -180,8 +181,8 @@ class Controller:
         return [Pico(**row) for row in results]
 
     def change_pico_name(self, serial_number: str, name: str):
-        with self.conn:
-            with self.lock:
+        with self.lock:
+            with self.conn:
                 results = self.cursor.execute(
                     """
                     UPDATE units
@@ -195,8 +196,8 @@ class Controller:
                 return Pico(**results[0])
 
     def change_pico_growth_profile(self, serial_number: str, profile: GrowthProfile):
-        with self.conn:
-            with self.lock:
+        with self.lock:
+            with self.conn:
                 results = self.cursor.execute(
                     """
                     UPDATE units

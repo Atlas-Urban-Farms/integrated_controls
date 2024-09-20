@@ -34,7 +34,7 @@ class Interface:
 
         with ptg.YamlLoader() as loader:
             loader.load(CONFIG)
-            
+
         self.manager = ptg.WindowManager()
         self.units_container = ptg.Container()
 
@@ -88,7 +88,7 @@ class Interface:
 
             try:
                 new_profile = ctrl.GrowthProfile(
-                    **{input.prompt[1:-2]: input.value for input in inputs}  # type: ignore
+                    **{input.prompt[:-2]: input.value for input in inputs}  # type: ignore
                 )
             except pydantic.ValidationError as e:
                 self.display_alert(
@@ -116,8 +116,10 @@ class Interface:
             if name_input.value != pico.name:
                 self.controller.change_pico_name(pico.serial_number, name_input.value)
 
+                change_saved = True
+
             if change_saved:
-                self.display_alert(ptg.Label("Change Saved"), 2000)
+                self.display_alert(ptg.Label("Change Saved"), 2)
 
             self.manager.remove(window)
 
@@ -196,7 +198,7 @@ class Interface:
             self.picos = picos
 
             widgets = [
-                ptg.Splitter("Unit Name", "Serial Number", "", ""),
+                ptg.Splitter("Unit Name", "Serial Number", "Configure", "Interact"),
             ] + [self.new_pico_row(pico) for pico in picos]
 
             # widgets = [ptg.Container(widget, border=["bottom"]) for widget in widgets]
