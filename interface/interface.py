@@ -11,6 +11,30 @@ import controller as ctrl
 
 class Interface:
     def __init__(self, controller: ctrl.Controller) -> None:
+        CONFIG = """
+        config:
+            InputField:
+                styles:
+                    prompt: dim italic
+                    cursor: '@72'
+            Label:
+                styles:
+                    value: dim bold
+
+            Window:
+                styles:
+                    border: '60'
+                    corner: '60'
+
+            Container:
+                styles:
+                    border: '96'
+                    corner: '96'
+        """
+
+        with ptg.YamlLoader() as loader:
+            loader.load(CONFIG)
+            
         self.manager = ptg.WindowManager()
         self.units_container = ptg.Container()
 
@@ -100,10 +124,14 @@ class Interface:
         confirm_button = ptg.Button(label="Confirm", onclick=on_save)
 
         window = ptg.Window(
+            "[bold]Configure Device",
+            "[italic]All field are editable",
+            "",
             ptg.Splitter(
                 ptg.Container(
                     ptg.Label("[bold]Unit Information"),
                     name_input,
+                    *["" for _ in range(0, len(inputs) - 1)]
                 ),
                 ptg.Container(
                     ptg.Label("[bold]Growth Profile"),
