@@ -4,3 +4,4 @@ pydantic
 python-dotenv
 pyserial
 nanoid
+pytest

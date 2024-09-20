@@ -81,7 +81,13 @@ class Interface:
                     lambda _, key: ptg.InputField.handle_key(name_input, key),
                 )
 
-            name_input.bind(ptg.keys.BACKSPACE, delete_all)
+        else:
+            if pico.connected:
+                name_input.styles.value = "green"
+            else:
+                name_input.styles.value = "red"
+
+        name_input.bind(ptg.keys.BACKSPACE, delete_all)
 
         def on_save(_):
             old_profile = ctrl.GrowthProfile.model_validate_json(pico.growth_profile)
@@ -123,6 +129,17 @@ class Interface:
 
             self.manager.remove(window)
 
+        def on_play_sound_click(_):
+            if pico.connected:
+                self.controller.play_sound(serial_number=pico.serial_number)
+
+        def on_start_water_click(_):
+            if pico.connected:
+                self.controller.start_water(
+                    serial_number=pico.serial_number,
+                    duration=10,
+                )
+
         confirm_button = ptg.Button(label="Confirm", onclick=on_save)
 
         window = ptg.Window(
@@ -133,11 +150,22 @@ class Interface:
                 ptg.Container(
                     ptg.Label("[bold]Unit Information"),
                     name_input,
-                    *["" for _ in range(0, len(inputs) - 1)]
+                    *["" for _ in range(0, len(inputs) - 1)],
                 ),
                 ptg.Container(
                     ptg.Label("[bold]Growth Profile"),
                     *inputs,
+                ),
+            ),
+            "",
+            ptg.Container(
+                "Interactions",
+                ptg.Splitter(
+                    ptg.Button(label="Play Sound", onclick=on_play_sound_click),
+                    ptg.Button(
+                        label="Start Pump",
+                        onclick=on_start_water_click,
+                    ),
                 ),
             ),
             "",
@@ -152,8 +180,14 @@ class Interface:
 
         return window
 
-    def display_alert(self, alert: ptg.Widget, dismiss_in: int | None = None):
-        window = ptg.Window(alert, is_modal=True)
+    def display_alert(
+        self,
+        alert: ptg.Widget,
+        dismiss_in: int | None = None,
+        window: ptg.Window | None = None,
+    ):
+        if not window:
+            window = ptg.Window(alert, is_modal=True)
 
         self.manager.add(window)
         window.center()
@@ -165,30 +199,28 @@ class Interface:
             self.manager.remove(window)
 
     def new_pico_row(self, pico: ctrl.Pico):
-        input_label = ptg.Label(pico.name if pico.name else "")
+        name_label = ptg.Label(pico.name if pico.name else "")
 
         if not pico.name:
             new_name_prompt = "Enter A Name"
 
-            input_label.styles.value = "red italic"
-            input_label.value = new_name_prompt
+            name_label.styles.value = "white italic"
+            name_label.value = new_name_prompt
+        else:
+            if pico.connected:
+                name_label.styles.value = "green"
+            else:
+                name_label.styles.value = "red"
 
         def on_edit_profile_click(_):
             self.view_profile(pico)
 
-        def on_play_sound_click(_):
-            try:
-                self.controller.play_sound(serial_number=pico.serial_number)
-            except:
-                pass
-
         interactions_buttons = [
-            ptg.Button(label="Edit Profile", onclick=on_edit_profile_click),
-            ptg.Button(label="Play Sound", onclick=on_play_sound_click),
+            ptg.Button(label="Configure", onclick=on_edit_profile_click),
         ]
 
         splitter = ptg.Splitter(
-            input_label, ptg.Label(pico.serial_number), *interactions_buttons
+            name_label, ptg.Label(pico.serial_number), *interactions_buttons
         )
 
         return splitter
@@ -197,9 +229,9 @@ class Interface:
         if picos != self.picos:
             self.picos = picos
 
-            widgets = [
-                ptg.Splitter("Unit Name", "Serial Number", "Configure", "Interact"),
-            ] + [self.new_pico_row(pico) for pico in picos]
+            widgets = [ptg.Splitter("Unit Name", "Serial Number", "Configure"), ""] + [
+                self.new_pico_row(pico) for pico in picos
+            ]
 
             # widgets = [ptg.Container(widget, border=["bottom"]) for widget in widgets]
 
