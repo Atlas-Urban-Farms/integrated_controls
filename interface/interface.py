@@ -21,9 +21,9 @@ class Interface:
         )
         self.main_window.set_title("All Units")
 
-        self.manager.layout.add_slot("Body")
+        self.manager.layout.add_slot("body")
 
-        self.manager.add(self.main_window)
+        self.manager.add(self.main_window, "body")
 
         self.manager.focus(self.main_window)
 
@@ -33,7 +33,7 @@ class Interface:
     def view_profile(self, pico: ctrl.Pico):
         window = self.new_profile_view(pico)
 
-        self.manager.add(window)
+        self.manager.add(window, "body")
         self.manager.focus(window)
 
     def new_profile_view(self, pico: ctrl.Pico):
@@ -44,7 +44,9 @@ class Interface:
             for key, value in profile.items()
         ]
 
-        name_input = ptg.InputField(pico.name if pico.name else "")
+        name_input = ptg.InputField(
+            pico.name if pico.name else "", prompt="Unit Name: "
+        )
         if not pico.name:
             name_input.styles.value = "red"
 
@@ -62,7 +64,7 @@ class Interface:
 
             try:
                 new_profile = ctrl.GrowthProfile(
-                    **{input.prompt[:-2]: input.value for input in inputs}  # type: ignore
+                    **{input.prompt[1:-2]: input.value for input in inputs}  # type: ignore
                 )
             except pydantic.ValidationError as e:
                 self.display_alert(
@@ -78,12 +80,20 @@ class Interface:
                 self.loop()
                 return
 
+            change_saved = False
+
             if old_profile != new_profile:
                 self.controller.change_pico_growth_profile(
                     pico.serial_number, new_profile
                 )
 
-                self.display_alert(ptg.Label("Profile Saved"), 2000)
+                change_saved = True
+
+            if name_input.value != pico.name:
+                self.controller.change_pico_name(pico.serial_number, name_input.value)
+
+            if change_saved:
+                self.display_alert(ptg.Label("Change Saved"), 2000)
 
             self.manager.remove(window)
 
@@ -91,20 +101,21 @@ class Interface:
 
         window = ptg.Window(
             ptg.Splitter(
-                ptg.Container(),
+                ptg.Container(
+                    ptg.Label("[bold]Unit Information"),
+                    name_input,
+                ),
                 ptg.Container(
                     ptg.Label("[bold]Growth Profile"),
                     *inputs,
-                    "",
-                    ptg.Splitter(
-                        confirm_button,
-                    ),
                 ),
             ),
+            "",
+            confirm_button,
             is_modal=True,
         )
 
-        window.set_title(pico.name if pico.name else pico.serial_number)
+        window.set_title(pico.serial_number)
         window.bind(ptg.keys.ESC, lambda _, __: self.manager.remove(window))
 
         window.center()
@@ -165,7 +176,7 @@ class Interface:
             self.units_container.set_widgets(widgets)  # type: ignore
 
     def loop(self):
-        if os.environ["DEV"]:
+        if os.environ.get("DEV"):
             self.update_units(self.controller.all_picos())
         else:
             self.update_units(self.controller.connected_picos())
