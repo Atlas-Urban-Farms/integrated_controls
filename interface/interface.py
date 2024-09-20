@@ -81,13 +81,13 @@ class Interface:
                     lambda _, key: ptg.InputField.handle_key(name_input, key),
                 )
 
+            name_input.bind(ptg.keys.BACKSPACE, delete_all)
+
         else:
             if pico.connected:
                 name_input.styles.value = "green"
             else:
                 name_input.styles.value = "red"
-
-        name_input.bind(ptg.keys.BACKSPACE, delete_all)
 
         def on_save(_):
             old_profile = ctrl.GrowthProfile.model_validate_json(pico.growth_profile)
