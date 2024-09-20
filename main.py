@@ -1,10 +1,12 @@
 import atexit
 import threading
 import time
+from dotenv import load_dotenv
 
 import controller as ctrl
 import interface as intf
 
+load_dotenv()
 
 def main():
     from multiprocessing.managers import SyncManager

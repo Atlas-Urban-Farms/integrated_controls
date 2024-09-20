@@ -182,26 +182,32 @@ class Controller:
     def change_pico_name(self, serial_number: str, name: str):
         with self.conn:
             with self.lock:
-                self.cursor.execute(
+                results = self.cursor.execute(
                     """
                     UPDATE units
                     SET name = ?
-                    WHERE serial_number = ?;
+                    WHERE serial_number = ?
+                    RETURNING *;
                     """,
                     (name, serial_number),
-                )
+                ).fetchall()
+
+                return Pico(**results[0])
 
     def change_pico_growth_profile(self, serial_number: str, profile: GrowthProfile):
         with self.conn:
             with self.lock:
-                self.cursor.execute(
+                results = self.cursor.execute(
                     """
                     UPDATE units
                     SET growth_profile = ?
-                    WHERE serial_number = ?;
+                    WHERE serial_number = ?
+                    RETURNING *;
                     """,
                     (profile.model_dump_json(), serial_number),
-                )
+                ).fetchall()
+
+                return Pico(**results[0])
 
     def start_water(self, serial_number: str, duration: int):
         """start water for the specified number of milliseconds"""

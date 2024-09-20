@@ -1,7 +1,9 @@
 import json
+import os
 import sqlite3
 import time
 
+import pydantic
 import pytermgui as ptg
 
 import controller as ctrl
@@ -11,8 +13,6 @@ class Interface:
     def __init__(self, controller: ctrl.Controller) -> None:
         self.manager = ptg.WindowManager()
         self.units_container = ptg.Container()
-
-        self.profile_window = ptg.Window()
 
         self.main_window = ptg.Window(
             "",
@@ -44,54 +44,93 @@ class Interface:
             for key, value in profile.items()
         ]
 
+        name_input = ptg.InputField(pico.name if pico.name else "")
+        if not pico.name:
+            name_input.styles.value = "red"
+
+            def delete_all(*args, **kwargs):
+                name_input.delete_back(len(name_input.value))
+                name_input.bind(
+                    ptg.keys.BACKSPACE,
+                    lambda _, key: ptg.InputField.handle_key(name_input, key),
+                )
+
+            name_input.bind(ptg.keys.BACKSPACE, delete_all)
+
         def on_save(_):
             old_profile = ctrl.GrowthProfile.model_validate_json(pico.growth_profile)
 
-            new_profile = ctrl.GrowthProfile(
-                **{input.prompt[:-2]: input.value for input in inputs}  # type: ignore
-            )
+            try:
+                new_profile = ctrl.GrowthProfile(
+                    **{input.prompt[:-2]: input.value for input in inputs}  # type: ignore
+                )
+            except pydantic.ValidationError as e:
+                self.display_alert(
+                    ptg.Container(
+                        *[
+                            ptg.Label(
+                                f"For Field \"{'.'.join([str(x) for x in err['loc']])}\": {err['msg']}",
+                            )
+                            for err in e.errors()
+                        ]
+                    )
+                )
+                self.loop()
+                return
 
             if old_profile != new_profile:
                 self.controller.change_pico_growth_profile(
                     pico.serial_number, new_profile
                 )
 
-                self.display_alert("Profile Saved")
+                self.display_alert(ptg.Label("Profile Saved"), 2000)
 
             self.manager.remove(window)
 
+        confirm_button = ptg.Button(label="Confirm", onclick=on_save)
+
         window = ptg.Window(
-            ptg.Container(
-                *inputs,
-                "",
-                ptg.Button(label="Confirm", onclick=on_save),
-            )
+            ptg.Splitter(
+                ptg.Container(),
+                ptg.Container(
+                    ptg.Label("[bold]Growth Profile"),
+                    *inputs,
+                    "",
+                    ptg.Splitter(
+                        confirm_button,
+                    ),
+                ),
+            ),
+            is_modal=True,
         )
 
         window.set_title(pico.name if pico.name else pico.serial_number)
+        window.bind(ptg.keys.ESC, lambda _, __: self.manager.remove(window))
 
         window.center()
 
         return window
 
-    def display_alert(self, alert: str):
-        window = ptg.Window(alert)
-        window.center()
+    def display_alert(self, alert: ptg.Widget, dismiss_in: int | None = None):
+        window = ptg.Window(alert, is_modal=True)
 
         self.manager.add(window)
-        time.sleep(1.5)
-        self.manager.remove(window)
+        window.center()
 
-    def new_pico_display(self, pico: ctrl.Pico):
-        input_field = ptg.InputField(pico.name if pico.name else '"Enter A Name"')
+        window.bind(ptg.keys.ESC, lambda _, __: self.manager.remove(window))
 
-        def on_enter(field: ptg.InputField, key: str):
-            if field.value != pico.name and field.value:
-                self.controller.change_pico_name(pico.serial_number, field.value)
+        if dismiss_in:
+            time.sleep(dismiss_in)
+            self.manager.remove(window)
 
-                self.display_alert("Name Updated")
+    def new_pico_row(self, pico: ctrl.Pico):
+        input_label = ptg.Label(pico.name if pico.name else "")
 
-        input_field.bind(ptg.keys.ENTER, on_enter)
+        if not pico.name:
+            new_name_prompt = "Enter A Name"
+
+            input_label.styles.value = "red italic"
+            input_label.value = new_name_prompt
 
         def on_edit_profile_click(_):
             self.view_profile(pico)
@@ -108,7 +147,7 @@ class Interface:
         ]
 
         splitter = ptg.Splitter(
-            input_field, ptg.Label(pico.serial_number), *interactions_buttons
+            input_label, ptg.Label(pico.serial_number), *interactions_buttons
         )
 
         return splitter
@@ -119,14 +158,17 @@ class Interface:
 
             widgets = [
                 ptg.Splitter("Unit Name", "Serial Number", "", ""),
-            ] + [self.new_pico_display(pico) for pico in picos]
+            ] + [self.new_pico_row(pico) for pico in picos]
 
             # widgets = [ptg.Container(widget, border=["bottom"]) for widget in widgets]
 
             self.units_container.set_widgets(widgets)  # type: ignore
 
     def loop(self):
-        self.update_units(self.controller.connected_picos())
+        if os.environ["DEV"]:
+            self.update_units(self.controller.all_picos())
+        else:
+            self.update_units(self.controller.connected_picos())
 
     def start(self):
         self.update_units([])
