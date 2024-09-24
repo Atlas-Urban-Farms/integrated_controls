@@ -19,7 +19,6 @@ from controller.models import GrowthProfile, Pico
 
 
 class Controller:
-
     def __init__(self):
         import sqlite3
 
@@ -168,7 +167,7 @@ class Controller:
                 """
             ).fetchall()
 
-        return [Pico(**row) for row in results]
+        return [Pico(**row, connected=True) for row in results]
 
     def all_picos(self) -> list[Pico]:
         with self.lock:
@@ -178,7 +177,10 @@ class Controller:
                 """
             ).fetchall()
 
-        return [Pico(**row) for row in results]
+        return [
+            Pico(**row, connected=row["serial_number"] in self.serials.keys())
+            for row in results
+        ]
 
     def change_pico_name(self, serial_number: str, name: str):
         with self.lock:
@@ -243,13 +245,13 @@ class Controller:
     def get_last_watered(self, serial_number: str) -> float | None:
         results = self.cursor.execute(
             """
-            SELECT timestamp FROM events WHERE serial_number = ? and command_code = ? ORDER BY timestamp DESC LIMIT 1;
+            SELECT CAST(strftime('%s', timestamp) AS INT) as timestamp FROM events WHERE serial_number = ? and command_code = ? ORDER BY timestamp DESC LIMIT 1;
             """,
             (serial_number, CommandCode.StartWater.value),
         ).fetchall()
 
         if len(results) > 0:
-            return results[0]["timestamp"]
+            return float(results[0]["timestamp"])
 
         return None
 
