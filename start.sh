@@ -1,3 +1,4 @@
 #!/bin/bash
-source "./venv/bin/activate"
-python main.py
+source "/home/ubuntu/integrated_controls/venv/bin/activate"
+python3 "/home/ubuntu/integrated_controls/main.py"
+
