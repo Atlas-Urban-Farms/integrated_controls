@@ -1,4 +1,5 @@
 #!/bin/bash
-source "/home/ubuntu/integrated_controls/venv/bin/activate"
-python3 "/home/ubuntu/integrated_controls/main.py"
+cd "$(dirname "${BASH_SOURCE[0]}")"
+source "venv/bin/activate"
+python3 "main.py"
 

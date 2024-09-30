@@ -78,7 +78,7 @@ class Interface:
                 name_input.delete_back(len(name_input.value))
                 name_input.bind(
                     ptg.keys.BACKSPACE,
-                    lambda _, key: ptg.InputField.handle_key(name_input, key),
+                    ptg.InputField.handle_key,
                 )
 
             name_input.bind(ptg.keys.BACKSPACE, delete_all)
@@ -142,6 +142,11 @@ class Interface:
 
         confirm_button = ptg.Button(label="Confirm", onclick=on_save)
 
+        def spaced_inputs(inputs: list[ptg.InputField]):
+            for input in inputs:
+                yield ptg.Label()
+                yield input
+
         window = ptg.Window(
             "[bold]Configure Device",
             "[italic]All field are editable",
@@ -154,7 +159,7 @@ class Interface:
                 ),
                 ptg.Container(
                     ptg.Label("[bold]Growth Profile"),
-                    *inputs,
+                    *spaced_inputs(inputs),
                 ),
             ),
             "",

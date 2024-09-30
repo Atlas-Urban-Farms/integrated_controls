@@ -8,6 +8,7 @@ import interface as intf
 
 load_dotenv()
 
+
 def main():
     from multiprocessing.managers import SyncManager
 
@@ -32,6 +33,8 @@ def main():
         end = time.time()
 
         time.sleep(max((epoch + 1000 - end) / 1000, 0))
+
+        epoch = end
 
 
 if __name__ == "__main__":

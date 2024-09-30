@@ -16,13 +16,20 @@ from controller.comm import (
     Response,
 )
 from controller.models import GrowthProfile, Pico
+import os
 
 
 class Controller:
     def __init__(self):
         import sqlite3
 
-        self.conn = sqlite3.connect("controller.db", check_same_thread=False)
+        if not __package__:
+            raise ValueError("must be in package")
+
+        dirname = os.path.dirname(__package__)
+        self.conn = sqlite3.connect(
+            os.path.join(dirname, "controller.db"), check_same_thread=False
+        )
         self.conn.row_factory = sqlite3.Row
 
         self.started: bool = False
@@ -202,8 +209,11 @@ class Controller:
                     """,
                     (name, serial_number),
                 ).fetchall()
+                data = {**results[0]}
 
-                return Pico(**results[0])
+                return Pico(
+                    **data, connected=data["serial_number"] in self.serials.keys()
+                )
 
     def change_pico_growth_profile(self, serial_number: str, profile: GrowthProfile):
         with self.lock:
@@ -218,7 +228,11 @@ class Controller:
                     (profile.model_dump_json(), serial_number),
                 ).fetchall()
 
-                return Pico(**results[0])
+                data = {**results[0]}
+
+                return Pico(
+                    **data, connected=data["serial_number"] in self.serials.keys()
+                )
 
     def start_water(self, serial_number: str, duration: int):
         """start water for the specified number of milliseconds"""
