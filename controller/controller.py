@@ -85,7 +85,7 @@ class Controller:
         def attempt_open(device: str):
             try:
                 return NullTerminatedSerial(device)
-            except:
+            except Exception as e:
                 return None
 
         used_ports = [ser for ser in self.serials.values()]
@@ -218,6 +218,15 @@ class Controller:
             serial_number=serial_number,
             cmd=Command(code=CommandCode.StartWater, data={"duration": duration}),
         )
+
+        with self.lock:
+            with self.conn:
+                self.cursor.execute(
+                    """
+                    INSERT INTO events (serial_number, command_code) VALUES (?, ?)
+                    """,
+                    (serial_number, CommandCode.StartWater.value),
+                )
 
     def start_light(self, serial_number: str, duration: int):
         """start light for the specified number of milliseconds"""
