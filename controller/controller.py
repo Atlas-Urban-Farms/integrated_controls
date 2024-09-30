@@ -79,6 +79,14 @@ class Controller:
 
             resp = Response.model_validate_json(output)
 
+            with self.conn:
+                self.cursor.execute(
+                    """
+                    INSERT INTO events (serial_number, command_code) VALUES (?, ?)
+                    """,
+                    (serial_number, cmd.code.value),
+                )
+
             return resp
 
     def refresh_picos(self):
@@ -218,15 +226,6 @@ class Controller:
             serial_number=serial_number,
             cmd=Command(code=CommandCode.StartWater, data={"duration": duration}),
         )
-
-        with self.lock:
-            with self.conn:
-                self.cursor.execute(
-                    """
-                    INSERT INTO events (serial_number, command_code) VALUES (?, ?)
-                    """,
-                    (serial_number, CommandCode.StartWater.value),
-                )
 
     def start_light(self, serial_number: str, duration: int):
         """start light for the specified number of milliseconds"""
