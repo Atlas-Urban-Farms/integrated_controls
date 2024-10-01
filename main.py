@@ -10,17 +10,10 @@ load_dotenv()
 
 
 def main():
-    from multiprocessing.managers import SyncManager
-
-    manager = SyncManager()
-    manager.register("Controller", ctrl.Controller)
-
-    manager.start()
-
     controller: ctrl.Controller = ctrl.Controller()  # type: ignore
     interface = intf.Interface(controller)
 
-    p1 = threading.Thread(target=interface.start)
+    p1 = threading.Thread(target=interface.start, daemon=True)
 
     p1.start()
 

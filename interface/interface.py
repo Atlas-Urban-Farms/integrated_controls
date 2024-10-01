@@ -112,17 +112,20 @@ class Interface:
 
             change_saved = False
 
-            if old_profile != new_profile:
-                self.controller.change_pico_growth_profile(
-                    pico.serial_number, new_profile
-                )
+            try:
+                if old_profile != new_profile:
+                    self.controller.change_pico_growth_profile(
+                        pico.serial_number, new_profile
+                    )
 
-                change_saved = True
+                    change_saved = True
 
-            if name_input.value != pico.name:
-                self.controller.change_pico_name(pico.serial_number, name_input.value)
+                if name_input.value != pico.name:
+                    self.controller.change_pico_name(pico.serial_number, name_input.value)
 
-                change_saved = True
+                    change_saved = True
+            except Exception as e:
+                self.display_alert(ptg.Label(str(e)), 2)
 
             if change_saved:
                 self.display_alert(ptg.Label("Change Saved"), 2)
@@ -137,7 +140,7 @@ class Interface:
             if pico.connected:
                 self.controller.start_water(
                     serial_number=pico.serial_number,
-                    duration=10,
+                    duration=5000,
                 )
 
         confirm_button = ptg.Button(label="Confirm", onclick=on_save)
@@ -147,20 +150,26 @@ class Interface:
                 yield ptg.Label()
                 yield input
 
+        unit_information_container_widgets = [
+            ptg.Label("[bold]Unit Information"),
+            name_input
+        ]
+        growth_profile_container_widgets = [
+            ptg.Label("[bold]Growth Profile"),
+            ptg.Label("[italic]Enter time inputs in format of HH:MM:SS"),
+            *spaced_inputs(inputs)
+        ]
+
         window = ptg.Window(
             "[bold]Configure Device",
             "[italic]All field are editable",
             "",
             ptg.Splitter(
                 ptg.Container(
-                    ptg.Label("[bold]Unit Information"),
-                    name_input,
-                    *["" for _ in range(0, len(inputs) - 1)],
+                    *unit_information_container_widgets,
+                    *["" for _ in range(0, len(growth_profile_container_widgets) - len(unit_information_container_widgets))],
                 ),
-                ptg.Container(
-                    ptg.Label("[bold]Growth Profile"),
-                    *spaced_inputs(inputs),
-                ),
+                ptg.Container(*growth_profile_container_widgets)
             ),
             "",
             ptg.Container(

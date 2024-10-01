@@ -1,10 +1,8 @@
+import contextlib
 import datetime
-import functools
 import json
-import multiprocessing
 import threading
 import time
-import typing
 
 from serial.tools.list_ports import comports
 
@@ -17,11 +15,11 @@ from controller.comm import (
 )
 from controller.models import GrowthProfile, Pico
 import os
+import sqlite3
 
 
 class Controller:
     def __init__(self):
-        import sqlite3
 
         if not __package__:
             raise ValueError("must be in package")
@@ -35,7 +33,7 @@ class Controller:
         self.started: bool = False
         self.serials: dict[str, NullTerminatedSerial] = {}
 
-        self.lock = multiprocessing.Lock()
+        self.lock = threading.Lock()
 
         self.exceptions: list[Exception] = []
 
@@ -86,22 +84,24 @@ class Controller:
 
             resp = Response.model_validate_json(output)
 
-            with self.conn:
-                self.cursor.execute(
-                    """
-                    INSERT INTO events (serial_number, command_code) VALUES (?, ?)
-                    """,
-                    (serial_number, cmd.code.value),
-                )
+            if serial_number:
+                with self.conn:
+                    self.cursor.execute(
+                        """
+                        INSERT INTO events (serial_number, command_code) VALUES (?, ?)
+                        """,
+                        (serial_number, cmd.code.value),
+                    )
 
             return resp
 
     def refresh_picos(self):
         def attempt_open(device: str):
-            try:
-                return NullTerminatedSerial(device)
-            except Exception as e:
-                return None
+            with self.lock:
+                try:
+                    return NullTerminatedSerial(device, timeout=5)
+                except Exception as e:
+                    return None
 
         used_ports = [ser for ser in self.serials.values()]
 
@@ -153,27 +153,26 @@ class Controller:
 
         self.serials = {pico[0]: pico[1] for pico in picos}
 
-        for pico in picos:
-            with self.lock:
-                with self.conn:
-                    self.cursor.execute(
-                        f"""
-                        INSERT OR IGNORE INTO units (serial_number, growth_profile)
-                        VALUES ('{pico[0]}', '{json.dumps({
-                            "watering_interval": 43200,
-                            "watering_time": 30,
-                            "light_start": "08:00",
-                            "light_end": "16:00",
-                        })}');
-                        """
-                    )
+        with self.conn:
+            for pico in picos:
+                self.cursor.execute(
+                    f"""
+                    INSERT OR IGNORE INTO units (serial_number, growth_profile)
+                    VALUES ('{pico[0]}', '{json.dumps({
+                        "watering_interval": 43200,
+                        "watering_time": 30,
+                        "light_start": "08:00",
+                        "light_end": "16:00",
+                    })}');
+                    """
+                )
 
         return self.serials
 
     def connected_picos(self) -> list[Pico]:
         serial_numbers = list(self.serials.keys())
 
-        with self.lock:
+        with self.conn:
             results = self.cursor.execute(
                 f"""
                 SELECT * FROM units
@@ -185,7 +184,7 @@ class Controller:
         return [Pico(**row, connected=True) for row in results]
 
     def all_picos(self) -> list[Pico]:
-        with self.lock:
+        with self.conn:
             results = self.cursor.execute(
                 f"""
                 SELECT * FROM units;
@@ -198,41 +197,39 @@ class Controller:
         ]
 
     def change_pico_name(self, serial_number: str, name: str):
-        with self.lock:
-            with self.conn:
-                results = self.cursor.execute(
-                    """
-                    UPDATE units
-                    SET name = ?
-                    WHERE serial_number = ?
-                    RETURNING *;
-                    """,
-                    (name, serial_number),
-                ).fetchall()
-                data = {**results[0]}
+        with self.conn:
+            results = self.cursor.execute(
+                """
+                UPDATE units
+                SET name = ?
+                WHERE serial_number = ?
+                RETURNING *;
+                """,
+                (name, serial_number),
+            ).fetchall()
+            data = {**results[0]}
 
-                return Pico(
-                    **data, connected=data["serial_number"] in self.serials.keys()
-                )
+            return Pico(
+                **data, connected=data["serial_number"] in self.serials.keys()
+            )
 
     def change_pico_growth_profile(self, serial_number: str, profile: GrowthProfile):
-        with self.lock:
-            with self.conn:
-                results = self.cursor.execute(
-                    """
-                    UPDATE units
-                    SET growth_profile = ?
-                    WHERE serial_number = ?
-                    RETURNING *;
-                    """,
-                    (profile.model_dump_json(), serial_number),
-                ).fetchall()
+        with self.conn:
+            results = self.cursor.execute(
+                """
+                UPDATE units
+                SET growth_profile = ?
+                WHERE serial_number = ?
+                RETURNING *;
+                """,
+                (profile.model_dump_json(), serial_number),
+            ).fetchall()
 
-                data = {**results[0]}
+            data = {**results[0]}
 
-                return Pico(
-                    **data, connected=data["serial_number"] in self.serials.keys()
-                )
+            return Pico(
+                **data, connected=data["serial_number"] in self.serials.keys()
+            )
 
     def start_water(self, serial_number: str, duration: int):
         """start water for the specified number of milliseconds"""
@@ -255,22 +252,24 @@ class Controller:
         )
 
     def get_unit(self, serial_number: str) -> GrowthProfile:
-        results = self.cursor.execute(
-            """
-            SELECT * FROM units WHERE serial_number = ?;
-            """,
-            (serial_number,),
-        ).fetchall()
+        with self.conn:
+            results = self.cursor.execute(
+                """
+                SELECT * FROM units WHERE serial_number = ?;
+                """,
+                (serial_number,),
+            ).fetchall()
 
         return GrowthProfile.model_validate_json(results[0]["growth_profile"])
 
     def get_last_watered(self, serial_number: str) -> float | None:
-        results = self.cursor.execute(
-            """
-            SELECT CAST(strftime('%s', timestamp) AS INT) as timestamp FROM events WHERE serial_number = ? and command_code = ? ORDER BY timestamp DESC LIMIT 1;
-            """,
-            (serial_number, CommandCode.StartWater.value),
-        ).fetchall()
+        with self.conn:
+            results = self.cursor.execute(
+                """
+                SELECT CAST(strftime('%s', timestamp) AS INT) as timestamp FROM events WHERE serial_number = ? and command_code = ? ORDER BY timestamp DESC LIMIT 1;
+                """,
+                (serial_number, CommandCode.StartWater.value),
+            ).fetchall()
 
         if len(results) > 0:
             return float(results[0]["timestamp"])
@@ -295,6 +294,6 @@ class Controller:
 
             if (
                 not last_watered
-                or last_watered + growth_profile.watering_interval > now
+                or last_watered + growth_profile.watering_interval < now
             ):
                 self.start_water(serial_number, growth_profile.watering_time * 1000)
