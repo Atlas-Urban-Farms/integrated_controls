@@ -1,3 +1,10 @@
+import os
+import sys
+
+parent_dir = os.path.abspath(os.path.dirname(__file__))
+vendor_dir = os.path.join(parent_dir, "vendor/Lib/site-packages")
+sys.path.append(vendor_dir)
+
 import atexit
 import threading
 import time
